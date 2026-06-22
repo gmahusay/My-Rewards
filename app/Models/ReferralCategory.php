@@ -33,6 +33,17 @@ class ReferralCategory extends Model
         return $this->hasMany(Referral::class, 'category_id');
     }
 
+    public function participants()
+    {
+        return $this->belongsToMany(User::class, 'referral_category_participants', 'category_id', 'user_id')
+            ->withTimestamps();
+    }
+
+    public function hasJoinedBy(User $user): bool
+    {
+        return $this->participants()->where('user_id', $user->id)->exists();
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

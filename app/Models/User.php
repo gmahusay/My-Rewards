@@ -309,6 +309,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the referral campaigns this user has joined.
+     */
+    public function joinedReferralCategories()
+    {
+        return $this->belongsToMany(ReferralCategory::class, 'referral_category_participants', 'user_id', 'category_id')
+            ->withTimestamps();
+    }
+
+    /**
      * Get the KPI categories created by this business.
      */
     public function kpiCategories()

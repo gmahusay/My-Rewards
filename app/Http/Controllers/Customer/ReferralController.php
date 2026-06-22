@@ -12,35 +12,63 @@ class ReferralController extends Controller
     public function index()
     {
         $user = auth()->user();
-        // Since user is a Customer, they belong to a business.
-        // We should show referral categories from *their* business?
-        // Or if the app is multi-tenant properly, yes, $user->business_id.
-        // But the prompt doesn't specify rigid tenancy, but usually yes.
-        // Let's assume global for now per Business though.
-        
         $businessId = $user->business_id;
-        
+
         $categories = ReferralCategory::where('business_id', $businessId)
             ->where('is_active', true)
+            ->withCount('participants')
+            ->with(['participants' => fn ($q) => $q->where('user_id', $user->id)])
             ->latest()
             ->get();
-            
+
+        // Annotate each category with whether the user has joined
+        $categories->each(function ($category) use ($user) {
+            $category->has_joined = $category->participants->isNotEmpty();
+        });
+
         return view('customer.referrals.index', compact('categories'));
     }
 
     public function show(ReferralCategory $category)
     {
+        $user = auth()->user();
         // Ensure the category belongs to the user's business
-        if ($category->business_id !== auth()->user()->business_id) {
+        if ($category->business_id !== $user->business_id) {
             abort(403);
         }
 
-        $myReferrals = auth()->user()->madeReferrals()
+        $hasJoined = $category->hasJoinedBy($user);
+
+        $myReferrals = $user->madeReferrals()
             ->where('category_id', $category->id)
             ->latest()
             ->get();
 
-        return view('customer.referrals.show', compact('category', 'myReferrals'));
+        return view('customer.referrals.show', compact('category', 'myReferrals', 'hasJoined'));
+    }
+
+    public function join(Request $request, ReferralCategory $category)
+    {
+        $user = auth()->user();
+
+        if ($category->business_id !== $user->business_id) {
+            abort(403);
+        }
+
+        if (!$category->is_active) {
+            return back()->with('error', 'This referral campaign is no longer active.');
+        }
+
+        // Already joined?
+        if ($category->hasJoinedBy($user)) {
+            return back()->with('error', 'You have already joined this campaign.');
+        }
+
+        $category->participants()->attach($user->id);
+
+        return redirect()
+            ->route('customer.referrals.show', $category)
+            ->with('status', 'You have joined the campaign! Your referral link is now active.');
     }
 
     public function store(Request $request)
@@ -51,12 +79,20 @@ class ReferralController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $user = auth()->user();
+        $category = ReferralCategory::findOrFail($request->category_id);
+
+        // Must have joined before submitting a referral
+        if (!$category->hasJoinedBy($user)) {
+            return back()->with('error', 'You must join this referral campaign before submitting referrals.');
+        }
+
         // Prevent self-referral
-        if ($request->referred_email === auth()->user()->email) {
+        if ($request->referred_email === $user->email) {
             return back()->with('error', 'You cannot refer yourself.');
         }
 
-        // Check for duplicates (optional but good)
+        // Check for duplicates
         $exists = Referral::where('category_id', $request->category_id)
             ->where('referred_email', $request->referred_email)
             ->exists();
@@ -67,16 +103,17 @@ class ReferralController extends Controller
 
         $referral = Referral::create([
             'category_id' => $request->category_id,
-            'referrer_id' => auth()->id(),
+            'referrer_id' => $user->id,
             'referred_email' => $request->referred_email,
             'notes' => $request->notes,
             'status' => 'pending',
         ]);
 
         // Notify Business Owner
-        $business = $referral->category->business; // User model relationship
+        $business = $referral->category->business;
         $business->notify(new \App\Notifications\NewReferralSubmitted($referral));
 
         return back()->with('success', 'Referral submitted successfully!');
     }
 }
+
