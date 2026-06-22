@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Business;
 
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
+use App\Models\ReferralCategory;
+use App\Models\ReferralVisit;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -11,21 +13,32 @@ use Illuminate\Support\Facades\DB;
 class ReferralController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display joined participants per referral category with their link-click stats.
      */
     public function index()
     {
         $business = auth()->user();
-        
-        // Get all referrals belonging to categories created by this business
-        $referrals = Referral::whereHas('category', function ($query) use ($business) {
-            $query->where('business_id', $business->id);
-        })
-        ->with(['category', 'referrer'])
-        ->latest()
-        ->paginate(15);
 
-        return view('business.referrals.index', compact('referrals'));
+        // Load all referral categories with their joined participants
+        $categories = ReferralCategory::where('business_id', $business->id)
+            ->with(['participants' => function ($q) {
+                $q->orderBy('name');
+            }])
+            ->withCount('participants')
+            ->latest()
+            ->get();
+
+        // For each category, fetch visit stats per participant
+        foreach ($categories as $category) {
+            foreach ($category->participants as $participant) {
+                $participant->visits = ReferralVisit::where('referrer_id', $participant->id)
+                    ->where('category_id', $category->id)
+                    ->latest()
+                    ->get();
+            }
+        }
+
+        return view('business.referrals.index', compact('categories'));
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Referral;
 use App\Models\ReferralCategory;
+use App\Models\ReferralVisit;
 use Illuminate\Http\Request;
 
 class ReferralController extends Controller
@@ -39,12 +40,13 @@ class ReferralController extends Controller
 
         $hasJoined = $category->hasJoinedBy($user);
 
-        $myReferrals = $user->madeReferrals()
+        // Link clicks for this user on this category
+        $myVisits = \App\Models\ReferralVisit::where('referrer_id', $user->id)
             ->where('category_id', $category->id)
             ->latest()
             ->get();
 
-        return view('customer.referrals.show', compact('category', 'myReferrals', 'hasJoined'));
+        return view('customer.referrals.show', compact('category', 'myVisits', 'hasJoined'));
     }
 
     public function join(Request $request, ReferralCategory $category)

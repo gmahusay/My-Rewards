@@ -34,8 +34,9 @@ class PublicReferralController extends Controller
         ReferralVisit::create([
             'category_id' => $category->id,
             'referrer_id' => $referrer->id,
-            'ip' => request()->ip(),
-            'user_agent' => request()->userAgent(),
+            'ip'          => request()->ip(),
+            'user_agent'  => request()->userAgent(),
+            'referer_url' => request()->headers->get('referer'),
         ]);
 
         // Optionally set a cookie to remember the referral for signups

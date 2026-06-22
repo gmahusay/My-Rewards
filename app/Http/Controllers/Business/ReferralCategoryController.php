@@ -149,8 +149,16 @@ class ReferralCategoryController extends Controller
             abort(403);
         }
 
-        $referrals = $category->referrals()->with('referrer')->latest()->paginate(20);
+        $participants = $category->participants()->orderBy('name')->paginate(20);
 
-        return view('business.referrals.categories.show', compact('category', 'referrals'));
+        // For each participant, fetch visit stats per participant
+        foreach ($participants as $participant) {
+            $participant->visits = \App\Models\ReferralVisit::where('referrer_id', $participant->id)
+                ->where('category_id', $category->id)
+                ->latest()
+                ->get();
+        }
+
+        return view('business.referrals.categories.show', compact('category', 'participants'));
     }
 }
